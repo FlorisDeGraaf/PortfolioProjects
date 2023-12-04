@@ -1,0 +1,110 @@
+/*
+
+Portfolio Project - Analyzing cancer rates and types in the USA
+
+Data sources found at CORGIS (https://think.cs.vt.edu/corgis/csv/cancer/)
+
+Analyzing the following:
+- Breast cancer rates by age group by state
+- Breast cancer rate by population older, comparing total rate with rate for people with white skin
+- Comparing cancer rates per state for people older that 65 years, combined with 65+ year old population per state 
+and calculating a state cancer risk score for people older than 65 years.
+
+*/
+
+-- Databases used
+
+Select *
+From CancerTypes
+
+Select *
+From CancerRates
+
+Select *
+From PopulationOld
+
+-- Breast cancer rates by age group by state
+-- Creates a CTE, returns the rate of breast cancer compared to the overall cancer rates by state and by age group
+
+With BreastVsRates (State, Rates18_44, Rates45_64, RatesOver65, Breast18_44, Breast45_64, BreastOver65, PercBreast18_44, PercBreast45_64, PercBreast65)
+as
+(
+Select rat.State, rat.[Rates#Age#18-45],rat.[Rates#Age#45-64], rat.[Rates#Age#> 64] 
+,typ.[Types#Breast#Age#18 - 44], typ.[Types#Breast#Age#> 64], typ.[Types#Breast#Age#45 - 64]
+,(typ.[Types#Breast#Age#18 - 44]/rat.[Rates#Age#18-45])*100 as PercBreast18_44
+,(typ.[Types#Breast#Age#45 - 64]/rat.[Rates#Age#45-64])*100 as PercBreast45_64
+,(typ.[Types#Breast#Age#> 64]/rat.[Rates#Age#> 64])*100 as PercBreast65
+
+From CancerRates rat
+Join CancerTypes typ
+On rat.State = typ.State
+)
+Select State, PercBreast18_44, PercBreast45_64, PercBreast65
+from BreastVsRates
+order by State
+
+-- Breast cancer Rate by State and by population 65 years or older, compared with people with white skin
+
+With StateRaceBreast (State, BreastTotal65, BreastWhite65)
+as
+(
+Select 
+	rat.State
+	, (typ.Types#Breast#Total/rat.[Rates#Age#> 64])*100
+	, (typ.Types#Breast#Race#White/rat.[Rates#Age#> 64])*100
+From CancerRates rat
+Join CancerTypes typ
+On rat.State = typ.State
+)
+Select State, BreastTotal65, BreastWhite65,
+(BreastWhite65-BreastTotal65) as BreastWhiteDifference
+from StateRaceBreast
+order by BreastWhiteDifference
+
+
+/* Comparing 65+ Cancer Rate by state with Population 65+ per state */
+
+-- Drop District of Columbia if needed
+
+Select pop.State, rat.state
+From PopulationOld pop
+Right Join CancerRates rat
+On pop.state = rat.State
+Where pop.State <> 'District%'
+
+-- Combine Cancer Rates with Elderly Population stats
+-- Then calculate a score based on Elderly Population and Elderly Cancer Patients showing cancer "chance" per state, lower scores are better
+-- Using Temp Table
+
+Drop Table if exists PercentCancerpatientElderly	
+Create Table #PercentCancerpatientElderly
+(
+	State nvarchar(255),
+	RatesSub18 numeric, 
+	Rates18_45 numeric, 
+	Rates45_65 numeric, 
+	Rates65Plus numeric,
+	PopulationPercentage65Plus numeric,
+)
+
+Insert into #PercentCancerpatientElderly
+Select 
+	  rat.State 
+	, rat.[Rates#Age#< 18]
+	, rat.[Rates#Age#18-45]
+	, rat.[Rates#Age#45-64]
+	, rat.[Rates#Age#> 64]
+	, pop.Pop65PlusPercentage
+From CancerRates rat
+Inner Join PopulationOld pop
+On rat.state = pop.state
+
+Select 
+	State
+	, CAST((Rates65Plus/(RatesSub18 + Rates18_45 + Rates45_65 + Rates65Plus)*100)as decimal(3,1)) as CancerRates65Plus
+	, PopulationPercentage65Plus
+	, CAST(((Rates65Plus/(RatesSub18 + Rates18_45 + Rates45_65 + Rates65Plus)*100)/PopulationPercentage65Plus)as decimal(3,1)) as CancerChanceIfElderly
+From #PercentCancerpatientElderly
+Order by CancerChanceIfElderly
+
+--GROUP BY PROJECT
