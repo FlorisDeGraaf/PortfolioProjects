@@ -1,0 +1,68 @@
+/*
+
+Deleting Duplicates from a top 1000 billionaires database
+
+*/
+
+Select * from Billionaires
+
+------ Problem: Some billionaires have multiple entries in the database, to use this data we only want one row of data per billionaire
+
+------ Method 1: CTE & Partition By - problem: can't exclude the data of the first (or first two) entries, only the second or last two entries. ------
+------ We need to remove the first or the first two entries as they are the older entries. ------
+
+WITH RowNumCTE AS(
+Select *,
+	ROW_NUMBER() OVER (
+	PARTITION BY name,
+				 rank,
+				 company#relationship,
+				 location#citizenship
+				 ORDER BY
+					rank 
+					) row_num
+From Billionaires
+)
+Select *
+From RowNumCTE
+Where row_num > 1
+Order by name
+
+------ Method 2: Group by & Having clause ------
+
+-- First we need to add an ID for every row
+
+Alter Table Billionaires
+add ID int identity(1,1) 
+
+Select * from Billionaires
+
+-- Checking how many entries we have to remove
+
+Select name, rank, Count(*) as CNT
+from Billionaires
+Group by name, rank
+Having Count(*) > 1;
+
+-- Grouping duplicates together, then selecting the records without the MAX ID (we want to keep those)
+
+Select *
+	From Billionaires
+	Where ID not in 
+	(
+		Select Max(ID)
+		From Billionaires
+		Group by name, rank
+	)
+;
+
+-- Actually Deleting the data
+
+Delete From Billionaires
+	Where ID not in 
+	(
+		Select Max(ID)
+		From Billionaires
+		Group by name, rank
+	)
+;
